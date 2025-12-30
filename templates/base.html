@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html
+  lang="ru"
+  x-data="{ darkMode: false, sidebarOpen: false }"
+  x-init="darkMode = JSON.parse(localStorage.getItem('darkMode')) || false;
+              $watch('darkMode', value => localStorage.setItem('darkMode', JSON.stringify(value)))"
+  :class="{ 'dark': darkMode }"
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}Knowledge Map - Карта знаний{% endblock %}</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Alpine.js -->
+    <script
+      defer
+      src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+    <!-- Font Awesome -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+
+    <!-- Custom CSS -->
+    <link href="/static/css/custom.css" rel="stylesheet" />
+
+    {% block extra_head %}{% endblock %}
+  </head>
+  <body
+    class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen transition-colors duration-300"
+  >
+    <!-- Header -->
+    <header class="bg-white dark:bg-gray-800 shadow-md">
+      <nav class="container mx-auto px-4 py-3">
+        <div class="flex justify-between items-center">
+          <!-- Logo -->
+          <div class="flex items-center space-x-3">
+            <button
+              @click="sidebarOpen = !sidebarOpen"
+              class="md:hidden text-gray-700 dark:text-gray-300"
+            >
+              <i class="fas fa-bars text-xl"></i>
+            </button>
+            <a href="{% url 'dashboard' %}" class="flex items-center space-x-2">
+              <i
+                class="fas fa-map text-2xl text-blue-600 dark:text-blue-400"
+              ></i>
+              <span class="text-xl font-bold">Knowledge Map</span>
+            </a>
+          </div>
+
+          <!-- Desktop Navigation -->
+          <div class="hidden md:flex items-center space-x-6">
+            <a
+              href="{% url 'dashboard' %}"
+              class="hover:text-blue-600 dark:hover:text-blue-400 transition"
+            >
+              <i class="fas fa-home mr-1"></i> Главная
+            </a>
+            <a
+              href="{% url 'branches:list' %}"
+              class="hover:text-blue-600 dark:hover:text-blue-400 transition"
+            >
+              <i class="fas fa-code-branch mr-1"></i> Ветки
+            </a>
+
+            <!-- Search -->
+            <div class="relative">
+              <input
+                type="text"
+                placeholder="Поиск..."
+                class="pl-10 pr-4 py-2 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64"
+              />
+              <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+            </div>
+
+            <!-- Notifications -->
+            <div class="relative">
+              <button
+                hx-get="{% url 'notifications' %}"
+                hx-trigger="click"
+                hx-target="#notifications-dropdown"
+                hx-swap="innerHTML"
+                class="relative p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"
+              >
+                <i class="fas fa-bell text-xl"></i>
+                {% if notifications_count > 0 %}
+                <span
+                  class="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center"
+                >
+                  {{ notifications_count }}
+                </span>
+                {% endif %}
+              </button>
+              <div
+                id="notifications-dropdown"
+                class="hidden absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 shadow-xl rounded-lg z-50 border border-gray-200 dark:border-gray-700"
+              >
+                <!-- HTMX загрузит уведомления здесь -->
+              </div>
+            </div>
+
+            <!-- User Menu -->
+            {% if user.is_authenticated %}
+            <div class="relative" x-data="{ open: false }">
+              <button
+                @click="open = !open"
+                class="flex items-center space-x-2 focus:outline-none"
+              >
+                {% if user.avatar %}
+                <img
+                  src="{{ user.avatar.url }}"
+                  alt="{{ user.username }}"
+                  class="w-10 h-10 rounded-full border-2 border-blue-500"
+                />
+                {% else %}
+                <div
+                  class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white"
+                >
+                  {{ user.username|first|upper }}
+                </div>
+                {% endif %}
+                <span class="hidden md:inline">{{ user.username }}</span>
+                <i class="fas fa-chevron-down text-sm"></i>
+              </button>
+
+              <div
+                x-show="open"
+                @click.away="open = false"
+                x-transition:enter="transition ease-out duration-100"
+                x-transition:enter-start="transform opacity-0 scale-95"
+                x-transition:enter-end="transform opacity-100 scale-100"
+                x-transition:leave="transition ease-in duration-75"
+                x-transition:leave-start="transform opacity-100 scale-100"
+                x-transition:leave-end="transform opacity-0 scale-95"
+                class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 shadow-lg rounded-lg py-2 z-50 border border-gray-200 dark:border-gray-700"
+              >
+                <a
+                  href="{% url 'users:profile' user.username %}"
+                  class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <i class="fas fa-user mr-2"></i> Профиль
+                </a>
+                <a
+                  href="{% url 'users:profile_edit' %}"
+                  class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <i class="fas fa-cog mr-2"></i> Настройки
+                </a>
+                <a
+                  href="{% url 'branches:create' %}"
+                  class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <i class="fas fa-plus mr-2"></i> Создать ветку
+                </a>
+                <hr class="my-2 border-gray-200 dark:border-gray-700" />
+                <a
+                  href="{% url 'users:logout' %}"
+                  class="block px-4 py-2 text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <i class="fas fa-sign-out-alt mr-2"></i> Выйти
+                </a>
+              </div>
+            </div>
+            {% else %}
+            <div class="flex items-center space-x-4">
+              <a
+                href="{% url 'users:login' %}"
+                class="px-4 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                Войти
+              </a>
+              <a
+                href="{% url 'users:register' %}"
+                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
+              >
+                Регистрация
+              </a>
+            </div>
+            {% endif %}
+
+            <!-- Dark Mode Toggle -->
+            <button
+              @click="darkMode = !darkMode"
+              class="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              <i class="fas fa-moon" x-show="!darkMode"></i>
+              <i class="fas fa-sun" x-show="darkMode"></i>
+            </button>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <!-- Mobile Sidebar -->
+    <div
+      x-show="sidebarOpen"
+      @click.away="sidebarOpen = false"
+      class="fixed inset-0 z-40 md:hidden"
+      x-transition:enter="transition ease-out duration-300"
+      x-transition:enter-start="opacity-0"
+      x-transition:enter-end="opacity-100"
+      x-transition:leave="transition ease-in duration-200"
+      x-transition:leave-start="opacity-100"
+      x-transition:leave-end="opacity-0"
+    >
+      <div
+        class="fixed inset-0 bg-black bg-opacity-50"
+        @click="sidebarOpen = false"
+      ></div>
+      <div
+        class="fixed inset-y-0 left-0 w-64 bg-white dark:bg-gray-800 shadow-lg"
+      >
+        <div class="p-4 border-b border-gray-200 dark:border-gray-700">
+          <div class="flex justify-between items-center">
+            <span class="text-lg font-semibold">Меню</span>
+            <button
+              @click="sidebarOpen = false"
+              class="text-gray-700 dark:text-gray-300"
+            >
+              <i class="fas fa-times text-xl"></i>
+            </button>
+          </div>
+        </div>
+        <div class="p-4 space-y-4">
+          <a
+            href="{% url 'dashboard' %}"
+            class="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            <i class="fas fa-home mr-3"></i> Главная
+          </a>
+          <a
+            href="{% url 'branches:list' %}"
+            class="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            <i class="fas fa-code-branch mr-3"></i> Ветки
+          </a>
+          <a
+            href="{% url 'users:profile' user.username %}"
+            class="block p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            <i class="fas fa-user mr-3"></i> Профиль
+          </a>
+          <hr class="border-gray-200 dark:border-gray-700" />
+          <div class="p-2">
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">Тема</p>
+            <button
+              @click="darkMode = !darkMode"
+              class="flex items-center justify-between w-full p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              <span>Темная тема</span>
+              <i class="fas fa-moon" x-show="!darkMode"></i>
+              <i class="fas fa-sun" x-show="darkMode"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-6">
+      <!-- Flash Messages -->
+      {% if messages %}
+      <div class="mb-6 space-y-3">
+        {% for message in messages %}
+        <div
+          class="p-4 rounded-lg {% if message.tags == 'success' %}bg-green-100 text-green-800{% elif message.tags == 'error' %}bg-red-100 text-red-800{% else %}bg-blue-100 text-blue-800{% endif %}"
+        >
+          {{ message }}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %} {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer
+      class="mt-auto bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 py-6"
+    >
+      <div class="container mx-auto px-4">
+        <div class="flex flex-col md:flex-row justify-between items-center">
+          <div class="mb-4 md:mb-0">
+            <a href="{% url 'dashboard' %}" class="flex items-center space-x-2">
+              <i
+                class="fas fa-map text-xl text-blue-600 dark:text-blue-400"
+              ></i>
+              <span class="text-lg font-bold">Knowledge Map</span>
+            </a>
+            <p class="text-gray-600 dark:text-gray-400 text-sm mt-2">
+              Карта ваших знаний и достижений
+            </p>
+          </div>
+
+          <div class="flex flex-wrap justify-center space-x-6">
+            <a
+              href="#"
+              class="text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
+            >
+              О проекте
+            </a>
+            <a
+              href="#"
+              class="text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
+            >
+              Помощь
+            </a>
+            <a
+              href="#"
+              class="text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
+            >
+              Контакты
+            </a>
+            <a
+              href="#"
+              class="text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
+            >
+              Условия использования
+            </a>
+          </div>
+
+          <div class="mt-4 md:mt-0">
+            <p class="text-gray-600 dark:text-gray-400 text-sm">
+              © 2024 Knowledge Map. Все права защищены.
+            </p>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <!-- Quick Post Modal -->
+    {% if user.is_authenticated %}
+    <div
+      id="quick-post-modal"
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden"
+      x-data="{ open: false }"
+      x-show="open"
+      x-transition:enter="transition ease-out duration-300"
+      x-transition:enter-start="opacity-0"
+      x-transition:enter-end="opacity-100"
+      x-transition:leave="transition ease-in duration-200"
+      x-transition:leave-start="opacity-100"
+      x-transition:leave-end="opacity-0"
+    >
+      <div
+        class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4"
+        @click.away="open = false"
+      >
+        <div
+          class="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center"
+        >
+          <h3 class="text-lg font-semibold">Быстрый пост</h3>
+          <button
+            @click="open = false"
+            class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          >
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="p-4">
+          <form
+            hx-post="{% url 'posts:quick_create' %}"
+            hx-target="#recent-posts"
+            hx-swap="afterbegin"
+            @submit="open = false"
+          >
+            {% csrf_token %}
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium mb-2">Ветка</label>
+                <select
+                  name="branch"
+                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {% for branch in user.branches.all %}
+                  <option value="{{ branch.id }}">{{ branch.title }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-2">Заголовок</label>
+                <input
+                  type="text"
+                  name="title"
+                  required
+                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-2">Содержание</label>
+                <textarea
+                  name="content"
+                  rows="3"
+                  required
+                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                ></textarea>
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-2"
+                  >Дата события</label
+                >
+                <input
+                  type="date"
+                  name="event_date"
+                  value="{{ today|date:'Y-m-d' }}"
+                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div class="mt-6 flex justify-end space-x-3">
+              <button
+                type="button"
+                @click="open = false"
+                class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                Отмена
+              </button>
+              <button
+                type="submit"
+                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
+              >
+                Опубликовать
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Floating Action Button -->
+    {% if user.is_authenticated %}
+    <button
+      @click="open = true"
+      class="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center z-40 transition-transform hover:scale-110"
+    >
+      <i class="fas fa-plus text-xl"></i>
+    </button>
+    {% endif %}
+
+    <!-- Custom JS -->
+    <script src="/static/js/alpine-init.js"></script>
+
+    {% block extra_js %}{% endblock %}
+  </body>
+</html>
